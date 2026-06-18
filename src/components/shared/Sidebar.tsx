@@ -18,7 +18,8 @@ import {
   LogOut,
   Award,
   Activity,
-  RefreshCw
+  RefreshCw,
+  ShieldCheck
 } from 'lucide-react'
 
 interface SidebarLink {
@@ -27,7 +28,7 @@ interface SidebarLink {
   icon: any
 }
 
-export function Sidebar() {
+export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => void }) {
   const pathname = usePathname()
   const { profile, signOut } = useAuth()
 
@@ -38,6 +39,7 @@ export function Sidebar() {
       case 'admin':
         return [
           { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+          { label: 'User Management', href: '/admin/users', icon: ShieldCheck },
           { label: 'Students', href: '/admin/students', icon: Users },
           { label: 'Mentors', href: '/admin/mentors', icon: GraduationCap },
           { label: 'Subjects', href: '/admin/subjects', icon: BookOpen },
@@ -72,8 +74,11 @@ export function Sidebar() {
   const links = getLinks()
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 flex w-64 flex-col border-r border-border bg-card/60 backdrop-blur-md transition-all">
-      <div className="flex h-16 items-center px-4 border-b border-border">
+    <aside className={cn(
+      "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-slate-900/95 lg:bg-card/60 backdrop-blur-md transition-all duration-300",
+      open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+    )}>
+      <div className="flex h-16 items-center justify-between px-4 border-b border-border">
         <Link href={`/${profile.role}`} className="flex items-center gap-2">
           <div className="h-9 w-9 rounded-full overflow-hidden border border-slate-800 shadow-sm shrink-0">
             <img src="/logo.jpg" alt="Logo" className="h-full w-full object-cover" />
@@ -86,16 +91,30 @@ export function Sidebar() {
               Training Centre
             </span>
             <span className="text-[8px] font-bold bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent uppercase tracking-widest leading-none mt-1">
-              SH TECH ZONE
+              Luminous Tech
             </span>
           </div>
         </Link>
+
+        {/* Mobile Close Button */}
+        {onClose && (
+          <button 
+            onClick={onClose} 
+            className="lg:hidden p-1 text-slate-400 hover:text-white rounded-md bg-slate-950/20 border border-slate-800/80 active:scale-95 transition-all cursor-pointer"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 px-4 py-6 overflow-y-auto">
         {links.map((link) => {
           const Icon = link.icon
-          const isActive = pathname === link.href || pathname.startsWith(link.href + '/')
+          const isActive = link.href === `/${profile.role}`
+            ? pathname === link.href
+            : pathname === link.href || pathname.startsWith(link.href + '/')
           return (
             <Link
               key={link.href}

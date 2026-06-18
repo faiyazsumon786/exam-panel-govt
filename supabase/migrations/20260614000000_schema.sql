@@ -523,7 +523,7 @@ BEGIN
             extensions.crypt('Luminous@123', extensions.gen_salt('bf')),
             now(),
             '{"provider": "email", "providers": ["email"]}'::jsonb,
-            '{"role": "admin", "full_name": "SH Tech Zone Admin"}'::jsonb,
+            '{"role": "admin", "full_name": "Luminous Tech Admin"}'::jsonb,
             now(),
             now(),
             '',
@@ -543,7 +543,7 @@ BEGIN
             profile_completed
         ) VALUES (
             admin_id,
-            'SH Tech Zone Admin',
+            'Luminous Tech Admin',
             '+8801700000000',
             'luminous@shamshedhaider.com',
             'admin',

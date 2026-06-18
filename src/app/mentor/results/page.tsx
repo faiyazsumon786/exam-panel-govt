@@ -385,7 +385,7 @@ export default function MentorResultsPage() {
             <div ref={marksheetRef} className="space-y-6 pt-4">
               <div className="flex justify-between items-start gap-4">
                 <div>
-                  <h2 className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-indigo-500 bg-clip-text text-transparent">Luminous-SH TECH ZONE</h2>
+                  <h2 className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-indigo-500 bg-clip-text text-transparent">Luminous Tech</h2>
                   <p className="text-[10px] text-slate-500 mt-0.5">Online Examination</p>
                 </div>
                 <Badge className={(reviewDetails.result as any).is_passed 

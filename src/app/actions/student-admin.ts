@@ -62,7 +62,7 @@ export async function updateStudentAdmin(formData: {
     await (adminClient.from('notifications') as any).insert({
       user_id: formData.studentId,
       title: `Account Registration Status: ${formData.status.toUpperCase()}`,
-      message: `Your SH TECH ZONE registration has been ${formData.status} by the administrator.`,
+      message: `Your Luminous Tech registration has been ${formData.status} by the administrator.`,
       type: 'system'
     })
   }
@@ -181,7 +181,7 @@ export async function bulkUpdateStudentStatus(studentIds: string[], status: 'app
     const notifications = studentIds.map((id) => ({
       user_id: id,
       title: `Account Registration Status: ${status.toUpperCase()}`,
-      message: `Your SH TECH ZONE registration has been ${status} by the administrator.`,
+      message: `Your Luminous Tech registration has been ${status} by the administrator.`,
       type: 'system'
     }))
 

@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-export function Navbar() {
+export function Navbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { profile, signOut } = useAuth()
   const supabase = createClient()
   const router = useRouter()
@@ -77,9 +77,21 @@ export function Navbar() {
   if (!profile) return null
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 w-full items-center justify-between border-b border-border bg-background/60 backdrop-blur-md px-6 pl-72">
-      <div className="flex items-center gap-4">
-        <h2 className="text-lg font-semibold text-foreground tracking-wide capitalize">
+    <header className="sticky top-0 z-10 flex h-16 w-full items-center justify-between border-b border-border bg-background/60 backdrop-blur-md px-4 lg:px-6 lg:pl-72 transition-all duration-200">
+      <div className="flex items-center gap-3">
+        {/* Toggle Button for Mobile */}
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={onToggleSidebar}
+          className="h-9 w-9 text-slate-400 hover:text-white rounded-lg bg-slate-950/20 border border-slate-800 lg:hidden flex items-center justify-center shrink-0 active:scale-95 transition-all cursor-pointer"
+        >
+          <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+            <path fillRule="evenodd" d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
+          </svg>
+        </Button>
+
+        <h2 className="text-sm md:text-lg font-semibold text-slate-200 tracking-wide capitalize truncate max-w-[120px] sm:max-w-none">
           {profile.role} Portal
         </h2>
         <Badge variant={profile.role === 'admin' ? 'destructive' : profile.role === 'mentor' ? 'default' : 'secondary'} className="uppercase font-semibold tracking-wider text-[10px]">

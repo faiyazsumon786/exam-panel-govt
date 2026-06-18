@@ -248,7 +248,8 @@ export async function logCheatingEvent(
   }
 
   // Trigger realtime notification alert for Admin/Mentors
-  await (supabase.from('notifications') as any).insert({
+  const adminDb = createAdminClient()
+  await (adminDb.from('notifications') as any).insert({
     title: 'Cheating Attempt Logged',
     message: `${user.email} triggered alert: ${eventType.toUpperCase()} (Warning ${nextWarningCount}/${exam?.warning_limit || 3})`,
     type: 'cheating_alert'
@@ -279,16 +280,17 @@ export async function submitExamAttempt(attemptId: string, isAutoSubmit = false)
   const studentId = attempt.student_id
   const examId = attempt.exam_id
 
-  // Fetch exam details and its questions
-  const { data: exam } = await supabase.from('exams').select('*').eq('id', examId).single() as any
-  const { data: questions } = await supabase.from('questions').select('*').eq('exam_id', examId) as any
+  // Fetch exam details and its questions using admin client
+  const adminDb = createAdminClient()
+  const { data: exam } = await adminDb.from('exams').select('*').eq('id', examId).single() as any
+  const { data: questions } = await adminDb.from('questions').select('*').eq('exam_id', examId) as any
 
   if (!exam || !questions || questions.length === 0) {
     return { success: false, error: 'Exam questions not resolved.' }
   }
 
   // Fetch student answers saved so far
-  const { data: savedAnswers } = await supabase.from('exam_answers').select('*').eq('attempt_id', attemptId) as any
+  const { data: savedAnswers } = await adminDb.from('exam_answers').select('*').eq('attempt_id', attemptId) as any
 
   const answersMap = new Map()
   savedAnswers?.forEach((ans: any) => {
@@ -331,9 +333,9 @@ export async function submitExamAttempt(attemptId: string, isAutoSubmit = false)
 
   const isPassed = totalMarksObtained >= exam.passing_marks
 
-  // Create transactional entries
+  // Create transactional entries using admin client (bypasses RLS limits for system operations)
   // 1. Update attempt status
-  await (supabase
+  const { error: updateAttemptErr } = await (adminDb
     .from('exam_attempts') as any)
     .update({ 
       status: isAutoSubmit ? 'auto_submitted' : 'submitted',
@@ -341,8 +343,12 @@ export async function submitExamAttempt(attemptId: string, isAutoSubmit = false)
     })
     .eq('id', attemptId)
 
+  if (updateAttemptErr) {
+    return { success: false, error: updateAttemptErr.message }
+  }
+
   // 2. Insert result
-  const { data: result, error: resultErr } = await (supabase
+  const { data: result, error: resultErr } = await (adminDb
     .from('results') as any)
     .insert({
       attempt_id: attemptId,
@@ -365,14 +371,14 @@ export async function submitExamAttempt(attemptId: string, isAutoSubmit = false)
   }
 
   // 3. Log activity
-  await (supabase.from('activity_logs') as any).insert({
+  await (adminDb.from('activity_logs') as any).insert({
     user_id: studentId,
     action: 'exam_submit',
     details: `${isAutoSubmit ? 'Auto-submitted' : 'Submitted'} exam: ${exam.title}. Score: ${totalMarksObtained}/${totalExamMarks} (${percentage}%)`
   })
 
   // 4. Create notification for student
-  await (supabase.from('notifications') as any).insert({
+  await (adminDb.from('notifications') as any).insert({
     user_id: studentId,
     title: 'Exam Score Released',
     message: `Your results for exam "${exam.title}" are ready. Score: ${totalMarksObtained}/${totalExamMarks}. Percentage: ${percentage}% (${isPassed ? 'PASS' : 'FAIL'})`,

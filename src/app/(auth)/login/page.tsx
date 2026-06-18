@@ -109,7 +109,7 @@ export default function LoginPage() {
               Luminous Skill Development Training Centre
             </CardTitle>
             <div className="text-xs font-black text-indigo-400/80 tracking-widest uppercase mt-1">
-              SH TECH ZONE
+              Luminous Tech
             </div>
             <CardDescription className="text-slate-400 text-xs tracking-wider uppercase pt-1">
               Online Examination System

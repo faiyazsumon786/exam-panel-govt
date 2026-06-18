@@ -178,7 +178,7 @@ export default function RegisterPage() {
           </CardTitle>
           <CardDescription className="text-xs text-slate-400">
             Luminous Skill Development Training Centre
-            <span className="block text-[10px] font-bold text-indigo-400/80 tracking-widest uppercase mt-1">SH TECH ZONE EXAM SYSTEM</span>
+            <span className="block text-[10px] font-bold text-indigo-400/80 tracking-widest uppercase mt-1">Luminous Tech Exam System</span>
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -53,7 +53,7 @@ export async function updateMentorAdmin(formData: {
   await (supabase.from('notifications') as any).insert({
     user_id: formData.mentorId,
     title: `Account Registration Status: ${formData.status.toUpperCase()}`,
-    message: `Your SH TECH ZONE mentor registration has been ${formData.status} by the administrator.`,
+    message: `Your Luminous Tech mentor registration has been ${formData.status} by the administrator.`,
     type: 'system'
   })
 

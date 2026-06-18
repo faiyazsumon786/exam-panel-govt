@@ -204,7 +204,7 @@ export default function StudentDashboardPage() {
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
             <span className="animated-gradient-text text-glow-indigo">Student Dashboard</span>
           </h1>
-          <p className="text-sm text-slate-400">Welcome to your SH TECH ZONE Examination desk.</p>
+          <p className="text-sm text-slate-400">Welcome to your Luminous Tech Examination desk.</p>
         </div>
       </div>
 

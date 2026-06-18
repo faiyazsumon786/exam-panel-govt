@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { 
   startExamAttempt, 
@@ -23,7 +23,9 @@ import {
   ArrowRight, 
   ArrowLeft,
   Lock,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Check,
+  Maximize2
 } from 'lucide-react'
 
 export default function StudentExamTakingPage() {
@@ -44,6 +46,10 @@ export default function StudentExamTakingPage() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [examStarted, setExamStarted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [acknowledged, setAcknowledged] = useState(false)
+  const [isNavigating, setIsNavigating] = useState(false)
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
+  const [animationClass, setAnimationClass] = useState('animate-fade-in-up')
 
   // Refs for tracking timers
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -65,6 +71,44 @@ export default function StudentExamTakingPage() {
     }
   })
   const exam = rawExam as any
+
+  // Load all saved answers for the current attempt to initialize the progress indicator & answers map
+  const fetchAllSavedAnswers = async (attemptId: string) => {
+    try {
+      const { data } = await supabase
+        .from('exam_answers')
+        .select('question_id, selected_option')
+        .eq('attempt_id', attemptId) as any
+
+      if (data) {
+        const answersMap: { [key: string]: 'A' | 'B' | 'C' | 'D' | null } = {}
+        data.forEach((ans: any) => {
+          if (ans.selected_option) {
+            answersMap[ans.question_id] = ans.selected_option
+          }
+        })
+        setAnswers(answersMap)
+      }
+    } catch (err) {
+      console.error('Error prefetching saved answers:', err)
+    }
+  }
+
+  // Prepopulate answers cache if attempt changes
+  useEffect(() => {
+    if (attempt?.id) {
+      fetchAllSavedAnswers(attempt.id)
+    }
+  }, [attempt?.id])
+
+  // Sync selectedOption locally when question or answers changes (avoids constant DB fetch)
+  useEffect(() => {
+    if (questions.length === 0) return
+    const currentQ = questions[currentQIndex]
+    if (currentQ) {
+      setSelectedOption(answers[currentQ.id] || null)
+    }
+  }, [currentQIndex, questions, answers])
 
   // Start exam trigger
   const handleStartExam = async () => {
@@ -108,6 +152,9 @@ export default function StudentExamTakingPage() {
 
         setExamStarted(true)
         toast.success('Exam started! All anti-cheating protocols are active.')
+        
+        // Load existing answers if any (to resume mid-way attempt)
+        await fetchAllSavedAnswers(res.attempt.id)
       } else {
         toast.error(res.error || 'Failed to start exam attempt.')
       }
@@ -273,55 +320,41 @@ export default function StudentExamTakingPage() {
     return () => clearInterval(pushTelemetry)
   }, [examStarted, attempt, timeRemaining, currentQIndex])
 
-  // Load current option selection if saved
-  useEffect(() => {
-    if (questions.length === 0 || !attempt) return
+  // Local handler to save option choice and update cache instantly
+  const handleSelectOption = (key: 'A' | 'B' | 'C' | 'D') => {
+    setSelectedOption(key)
     const currentQ = questions[currentQIndex]
-    if (!currentQ) return
-    
-    // Fetch answer if already saved
-    const fetchSavedAnswer = async () => {
-      const { data } = await supabase
-        .from('exam_answers')
-        .select('selected_option')
-        .eq('attempt_id', attempt.id)
-        .eq('question_id', currentQ.id)
-        .single() as any
-
-      if (data?.selected_option) {
-        setSelectedOption(data.selected_option as any)
-      } else {
-        setSelectedOption(null)
-      }
+    if (currentQ) {
+      setAnswers((prev) => ({ ...prev, [currentQ.id]: key }))
     }
-    fetchSavedAnswer()
-  }, [currentQIndex, questions, attempt])
+  }
 
-  // Save current answer and progress to next question
+  // Save current answer and progress to next question (non-blocking visual transitions)
   const handleNextQuestion = async (timeExpired = false) => {
     if (questions.length === 0 || !attempt) return
     const currentQ = questions[currentQIndex]
     if (!currentQ) return
 
-    // Save current answer
-    try {
-      await saveAnswerAndProgress(
-        attempt.id,
-        currentQ.id,
-        selectedOption,
-        currentQIndex + 1,
-        timeRemaining
-      )
-    } catch (err) {
-      console.error('Error saving answer')
-    }
+    setIsNavigating(true)
+
+    // Trigger slide out left
+    setAnimationClass('animate-slide-out-left')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+
+    // Save current answer in background (non-blocking)
+    saveAnswerAndProgress(
+      attempt.id,
+      currentQ.id,
+      selectedOption,
+      currentQIndex + 1,
+      timeRemaining
+    ).catch((err) => {
+      console.error('Error saving answer:', err)
+    })
 
     // Move next
     if (currentQIndex < questions.length - 1) {
-      setCurrentQIndex((prev) => {
-        if (prev >= questions.length - 1) return prev
-        return prev + 1
-      })
+      setCurrentQIndex((prev) => prev + 1)
       setSelectedOption(null)
 
       // Reset per question timer if applicable
@@ -329,53 +362,79 @@ export default function StudentExamTakingPage() {
         const nextQ = questions[currentQIndex + 1]
         setQTimeRemaining(nextQ?.time_limit || 30)
       }
+      setIsNavigating(false)
+      setAnimationClass('animate-slide-in-right')
     } else {
+      setIsNavigating(false)
       // Completed last question
-      handleManualSubmit()
+      // Check if there are any unanswered questions left
+      const unansweredIndex = questions.findIndex(q => !answers[q.id])
+      if (unansweredIndex !== -1) {
+        toast.info('Reviewing skipped questions...', {
+          description: 'You skipped some questions. Redirecting to the first unanswered question.',
+          duration: 4000
+        })
+        
+        setIsNavigating(true)
+        // Slide out to the appropriate direction based on index difference
+        const direction = unansweredIndex > currentQIndex ? 'animate-slide-out-left' : 'animate-slide-out-right'
+        const incoming = unansweredIndex > currentQIndex ? 'animate-slide-in-right' : 'animate-slide-in-left'
+        
+        setAnimationClass(direction)
+        setTimeout(() => {
+          setCurrentQIndex(unansweredIndex)
+          setSelectedOption(null)
+          setIsNavigating(false)
+          setAnimationClass(incoming)
+        }, 250)
+      } else {
+        handleManualSubmit()
+      }
     }
   }
 
-  // Previous Question (Only if backtracking allowed)
+  // Previous Question (Only if backtracking allowed, non-blocking visual transitions)
   const handlePrevQuestion = async () => {
     if (currentQIndex > 0 && exam?.allow_backtracking && attempt) {
       const currentQ = questions[currentQIndex]
       if (!currentQ) return
-      // Save current answer first
-      try {
-        await saveAnswerAndProgress(
-          attempt.id,
-          currentQ.id,
-          selectedOption,
-          currentQIndex - 1,
-          timeRemaining
-        )
-      } catch (err) {
-        console.error('Error saving answer')
-      }
 
-      setCurrentQIndex((prev) => {
-        if (prev <= 0) return prev
-        return prev - 1
+      setIsNavigating(true)
+
+      // Trigger slide out right
+      setAnimationClass('animate-slide-out-right')
+      await new Promise((resolve) => setTimeout(resolve, 250))
+
+      // Save current answer in background (non-blocking)
+      saveAnswerAndProgress(
+        attempt.id,
+        currentQ.id,
+        selectedOption,
+        currentQIndex - 1,
+        timeRemaining
+      ).catch((err) => {
+        console.error('Error saving answer:', err)
       })
+
+      setCurrentQIndex((prev) => prev - 1)
       setSelectedOption(null)
+      setIsNavigating(false)
+      setAnimationClass('animate-slide-in-left')
     }
   }
 
-  // Submit Actions
-  const handleManualSubmit = async () => {
+  // Submit Actions (trigger custom modal confirmation)
+  const handleManualSubmit = () => {
     if (!attempt) return
-    
-    // Set submitting flag synchronously before confirm blocks the thread
     isSubmittingRef.current = true
-    
-    if (!confirm('Are you sure you want to finish and submit your exam?')) {
-      isSubmittingRef.current = false
-      return
-    }
-    
+    setShowSubmitConfirm(true)
+  }
+
+  // Executed on confirming in the modal
+  const executeSubmit = async () => {
     setSubmitting(true)
+    let success = false
     try {
-      // Save last question answer
       const currentQ = questions[currentQIndex]
       if (currentQ) {
         await saveAnswerAndProgress(attempt.id, currentQ.id, selectedOption, currentQIndex, timeRemaining)
@@ -383,6 +442,7 @@ export default function StudentExamTakingPage() {
 
       const res = await submitExamAttempt(attempt.id)
       if (res.success && res.result) {
+        success = true
         toast.success('Exam submitted successfully!')
         document.exitFullscreen().catch(() => {})
         router.push(`/student/result/${res.result.id}`)
@@ -394,7 +454,10 @@ export default function StudentExamTakingPage() {
       toast.error('Submission error occurred')
       isSubmittingRef.current = false
     } finally {
-      setSubmitting(false)
+      if (!success) {
+        setSubmitting(false)
+        setShowSubmitConfirm(false)
+      }
     }
   }
 
@@ -402,9 +465,11 @@ export default function StudentExamTakingPage() {
     if (!attempt) return
     isSubmittingRef.current = true
     setSubmitting(true)
+    let success = false
     try {
       const res = await submitExamAttempt(attempt.id, true)
       if (res.success && res.result) {
+        success = true
         toast.success('Exam duration expired! Exam submitted automatically.')
         document.exitFullscreen().catch(() => {})
         router.push(`/student/result/${res.result.id}`)
@@ -415,7 +480,9 @@ export default function StudentExamTakingPage() {
       console.error('Auto submission error')
       isSubmittingRef.current = false
     } finally {
-      setSubmitting(false)
+      if (!success) {
+        setSubmitting(false)
+      }
     }
   }
 
@@ -440,31 +507,109 @@ export default function StudentExamTakingPage() {
   // RENDER PHASE 1: START SCREEN (Enforces Fullscreen start)
   if (!examStarted) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
-        <Card className="w-full max-w-lg border-slate-800 bg-slate-900/60 backdrop-blur-md p-4">
-          <CardHeader className="text-center pb-2">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-500/10 border border-indigo-500/20 mb-2">
-              <Lock className="h-6 w-6 text-indigo-500" />
+      <div className="relative flex min-h-screen items-center justify-center bg-slate-950 p-4 overflow-hidden">
+        {/* Decorative background glowing orbs */}
+        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-indigo-600/10 blur-[100px] pointer-events-none animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-80 h-80 rounded-full bg-violet-600/10 blur-[100px] pointer-events-none animate-pulse" />
+
+        <Card className="relative w-full max-w-lg border-slate-800 bg-slate-900/60 backdrop-blur-md p-5 animate-fade-in-up shadow-2xl shadow-indigo-950/40">
+          <CardHeader className="text-center pb-3">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-500/10 border border-indigo-500/20 mb-3 shadow-inner shadow-indigo-500/10 animate-pulse">
+              <Lock className="h-6 w-6 text-indigo-400" />
             </div>
-            <CardTitle className="text-lg font-bold text-white">Exam Entry Portal</CardTitle>
-            <CardDescription className="text-slate-400 text-xs">{exam.title} ({exam.subjects?.name})</CardDescription>
+            <CardTitle className="text-xl font-bold text-white tracking-tight">Exam Entry Portal</CardTitle>
+            <CardDescription className="text-slate-400 text-xs mt-1 font-medium">{exam.title} ({exam.subjects?.name})</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-300">
-            <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg space-y-1.5 text-xs">
-              <p className="font-bold text-indigo-400">Important Instructions:</p>
-              <p>• Fullscreen mode is mandatory and will be locked upon starting.</p>
-              <p>• Shifting tabs, minimizing the browser, or losing focus will trigger violations.</p>
-              <p>• Copying, pasting, and right-clicking are strictly disabled.</p>
-              <p>• Exceeding {exam.warning_limit} warnings will terminate and auto-submit the exam.</p>
+          <CardContent className="space-y-5 text-sm text-slate-300">
+            
+            <div className="space-y-3">
+              <p className="font-semibold text-indigo-400 text-xs px-1 uppercase tracking-wider">Mandatory Security Guidelines:</p>
+              
+              <div className="grid gap-2.5">
+                <div className="flex items-start gap-3 p-3 bg-slate-950/40 border border-slate-800/80 rounded-xl hover:border-slate-700/80 hover:bg-slate-900/40 transition-all duration-200">
+                  <div className="p-1.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shrink-0 mt-0.5">
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-xs">Mandatory Fullscreen</h4>
+                    <p className="text-slate-400 text-[11px] leading-relaxed mt-0.5">The exam must be taken in fullscreen. Exiting fullscreen mode triggers a violation.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 bg-slate-950/40 border border-slate-800/80 rounded-xl hover:border-slate-700/80 hover:bg-slate-900/40 transition-all duration-200">
+                  <div className="p-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0 mt-0.5">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-xs">Strict Tab Lockout</h4>
+                    <p className="text-slate-400 text-[11px] leading-relaxed mt-0.5">Do not switch tabs, minimize the browser, or lose focus. Any navigation is flagged.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 bg-slate-950/40 border border-slate-800/80 rounded-xl hover:border-slate-700/80 hover:bg-slate-900/40 transition-all duration-200">
+                  <div className="p-1.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 shrink-0 mt-0.5">
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-xs">Disabled Interactions</h4>
+                    <p className="text-slate-400 text-[11px] leading-relaxed mt-0.5">Copying, pasting, cut actions, and right-clicking are completely disabled.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 bg-slate-950/40 border border-slate-800/80 rounded-xl hover:border-slate-700/80 hover:bg-slate-900/40 transition-all duration-200">
+                  <div className="p-1.5 rounded bg-red-500/10 border border-red-500/20 text-red-400 shrink-0 mt-0.5">
+                    <Lock className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-xs">Automatic Termination</h4>
+                    <p className="text-slate-400 text-[11px] leading-relaxed mt-0.5">Exceeding {exam.warning_limit} security warnings terminates and submits the exam immediately.</p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-xs pt-1 text-slate-400 font-semibold">
-              <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> {exam.exam_duration_minutes ? `${exam.exam_duration_minutes} Minutes` : 'Per-Question Timer'}</span>
-              <span className="flex items-center gap-1"><FileSpreadsheet className="h-4 w-4" /> {exam.total_marks} Marks / Passing {exam.passing_marks}</span>
+
+            <div className="grid grid-cols-2 gap-3 text-xs pt-2 text-slate-400 border-t border-slate-800/60 font-semibold">
+              <span className="flex items-center gap-1.5 bg-slate-950/30 px-3 py-2 border border-slate-800/40 rounded-lg"><Clock className="h-4 w-4 text-indigo-400" /> {exam.exam_duration_minutes ? `${exam.exam_duration_minutes} Mins` : 'Per-Question Timer'}</span>
+              <span className="flex items-center gap-1.5 bg-slate-950/30 px-3 py-2 border border-slate-800/40 rounded-lg"><FileSpreadsheet className="h-4 w-4 text-indigo-400" /> {exam.total_marks} Marks / Pass {exam.passing_marks}</span>
             </div>
+
+            <div 
+              onClick={() => setAcknowledged(!acknowledged)}
+              style={{ cursor: 'pointer' }}
+              className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all duration-300 select-none ${
+                acknowledged 
+                  ? 'bg-indigo-950/20 border-indigo-500/50 shadow-lg shadow-indigo-500/5' 
+                  : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 hover:bg-slate-950/60'
+              }`}
+            >
+              <div className="pt-0.5 shrink-0">
+                <div className={`h-5 w-5 rounded border flex items-center justify-center transition-all duration-300 ${
+                  acknowledged 
+                    ? 'bg-indigo-600 border-indigo-500 text-white scale-105 shadow-md shadow-indigo-600/30' 
+                    : 'border-slate-600 bg-slate-950 hover:border-indigo-400'
+                }`}>
+                  {acknowledged && <Check className="h-3 w-3 stroke-[3]" />}
+                </div>
+              </div>
+              <span className="text-[11px] md:text-xs text-slate-300 leading-relaxed font-semibold cursor-pointer">
+                I acknowledge that I have read the guidelines and agree to comply with all proctoring rules.
+              </span>
+            </div>
+
           </CardContent>
-          <CardFooter>
-            <Button onClick={handleStartExam} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md h-10">
+          <CardFooter className="pt-1">
+            <Button 
+              onClick={handleStartExam} 
+              disabled={!acknowledged}
+              style={{ cursor: acknowledged ? 'pointer' : 'not-allowed' }}
+              className={`group w-full text-white font-bold h-11 transition-all duration-300 flex items-center justify-center gap-2 rounded-xl select-none ${
+                acknowledged 
+                  ? 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:via-indigo-400 hover:to-violet-500 shadow-xl shadow-indigo-600/20 hover:shadow-indigo-600/40 cursor-pointer active:scale-[0.985] hover:scale-[1.015] border border-indigo-400/20' 
+                  : 'bg-slate-800 border border-slate-700/50 text-slate-500 shadow-none cursor-not-allowed opacity-50'
+              }`}
+            >
               Acknowledge & Enter Exam
+              <ArrowRight className={`h-4 w-4 transition-transform duration-300 ${acknowledged ? 'group-hover:translate-x-1' : ''}`} />
             </Button>
           </CardFooter>
         </Card>
@@ -482,140 +627,209 @@ export default function StudentExamTakingPage() {
   return (
     <div className="flex flex-col min-h-screen bg-slate-950 text-white select-none">
       {/* Top Header Monitor Bar */}
-      <header className="sticky top-0 z-40 h-14 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-6 flex items-center justify-between">
+      <header className="sticky top-0 z-40 min-h-14 py-2 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-4 md:px-6 flex flex-wrap gap-3 items-center justify-between">
         {/* Dynamic overall or per-question timer & warnings count */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {timeRemaining !== null ? (
-            <div className="flex items-center gap-2 bg-indigo-600/10 border border-indigo-500/20 px-4 py-1.5 rounded-full text-indigo-400 text-base md:text-lg lg:text-xl font-mono font-extrabold animate-pulse shadow-md">
-              <Clock className="h-5 w-5 md:h-6 md:w-6" />
+            <div className="flex items-center gap-2 bg-indigo-600/10 border border-indigo-500/20 px-3 py-1.5 rounded-full text-indigo-400 text-sm md:text-base font-mono font-extrabold animate-pulse shadow-md">
+              <Clock className="h-4 w-4 md:h-5 md:w-5" />
               {formatTimer()}
             </div>
           ) : qTimeRemaining !== null ? (
-            <div className="flex items-center gap-2 bg-cyan-600/10 border border-cyan-500/20 px-4 py-1.5 rounded-full text-cyan-400 text-base md:text-lg lg:text-xl font-mono font-extrabold animate-pulse shadow-md">
-              <Clock className="h-5 w-5 md:h-6 md:w-6" />
+            <div className="flex items-center gap-2 bg-cyan-600/10 border border-cyan-500/20 px-3 py-1.5 rounded-full text-cyan-400 text-sm md:text-base font-mono font-extrabold animate-pulse shadow-md">
+              <Clock className="h-4 w-4 md:h-5 md:w-5" />
               {qTimeRemaining}s
             </div>
           ) : null}
 
           {/* Warnings Count indicator */}
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold ${
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] md:text-xs font-bold ${
             warnings > 0 
               ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse'
               : 'bg-emerald-500/5 text-emerald-400 border-emerald-500/20'
           }`}>
-            <AlertTriangle className="h-4 w-4" />
-            Warnings: {warnings} / {exam.warning_limit}
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Warnings: {warnings}/{exam.warning_limit}
           </div>
         </div>
 
         <div className="text-right">
-          <h2 className="text-sm font-bold text-slate-200">{exam.title}</h2>
-          <span className="text-[10px] text-slate-500">Question {currentQIndex + 1} of {questions.length}</span>
+          <h2 className="text-xs md:text-sm font-bold text-slate-200">{exam.title}</h2>
+          <span className="text-[9px] md:text-[10px] text-slate-500">Question {currentQIndex + 1} of {questions.length}</span>
         </div>
       </header>
 
       {/* Main Question view Card */}
-      <main className="flex-1 flex items-start justify-center p-4 md:p-8 overflow-y-auto pt-6 pb-12">
+      <main className="flex-1 flex items-start justify-center p-4 md:p-8 overflow-y-auto pt-6 pb-16">
         <div className="w-full max-w-2xl space-y-4">
-          {/* Question progress */}
-          <Progress value={((currentQIndex + 1) / questions.length) * 100} className="h-1.5 bg-slate-900" />
           
-          <Card className="border-slate-800 bg-slate-900/60 backdrop-blur-md p-6">
-            <CardHeader className="p-0 pb-4 border-b border-slate-800">
-              <div className="flex justify-between items-start gap-4">
-                <CardTitle className="text-white text-base leading-relaxed font-semibold">
-                  {currentQuestion.question_title}
-                </CardTitle>
-                <div className="flex flex-col items-end shrink-0 gap-1.5">
-                  <Badge variant="outline" className="border-slate-800 text-slate-400 font-mono text-[10px]">
-                    {currentQuestion.marks} pt(s)
-                  </Badge>
-                  
-                  {/* Per question timer indicator */}
-                  {qTimeRemaining !== null && (
-                    <Badge variant="outline" className="border-cyan-500/20 bg-cyan-500/5 text-cyan-400 font-mono text-xs md:text-sm px-2.5 py-1">
-                      {qTimeRemaining}s left
-                    </Badge>
-                  )}
-
-                  {/* Overall timer indicator */}
-                  {timeRemaining !== null && (
-                    <Badge variant="outline" className="border-indigo-500/20 bg-indigo-500/5 text-indigo-400 font-mono text-xs md:text-sm px-2.5 py-1">
-                      {formatTimer()} left
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0 pt-6 space-y-3">
-              {/* Options lists */}
-              {resolvedOptionsOrder.map((key: 'A' | 'B' | 'C' | 'D') => {
-                const optText = 
-                  key === 'A' ? currentQuestion.option_a :
-                  key === 'B' ? currentQuestion.option_b :
-                  key === 'C' ? currentQuestion.option_c :
-                  currentQuestion.option_d
-
-                const isSelected = selectedOption === key
+          {/* Question grid navigator (Interactive and responsive progress bar) */}
+          <div className="bg-slate-900/40 border border-slate-800/80 p-3 rounded-xl space-y-2.5">
+            <div className="flex justify-between items-center text-xs text-slate-400 px-1">
+              <span>Exam Navigation</span>
+              <span className="font-semibold text-slate-300">
+                {Object.keys(answers).length}/{questions.length} Answered
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+              {questions.map((q, idx) => {
+                const isCurrent = idx === currentQIndex
+                const isAnswered = !!answers[q.id]
+                const canJump = exam?.allow_backtracking
                 return (
                   <button
-                    key={key}
-                    onClick={() => setSelectedOption(key)}
-                    className={`w-full p-4 text-left rounded-xl border transition-all text-sm font-medium flex items-center gap-3 ${
-                      isSelected 
-                        ? 'bg-indigo-600/20 border-indigo-600 text-white shadow-lg shadow-indigo-600/5'
-                        : 'border-slate-800 bg-slate-950/40 hover:bg-slate-900/60 text-slate-300'
-                    }`}
+                    key={q.id}
+                    disabled={!canJump}
+                    onClick={async () => {
+                      if (idx === currentQIndex) return
+                      setIsNavigating(true)
+                      const direction = idx > currentQIndex ? 'animate-slide-out-left' : 'animate-slide-out-right'
+                      const incoming = idx > currentQIndex ? 'animate-slide-in-right' : 'animate-slide-in-left'
+                      setAnimationClass(direction)
+                      await new Promise(resolve => setTimeout(resolve, 250))
+                      const currentQ = questions[currentQIndex]
+                      if (currentQ) {
+                        saveAnswerAndProgress(
+                          attempt.id,
+                          currentQ.id,
+                          selectedOption,
+                          idx,
+                          timeRemaining
+                        ).catch(err => console.error(err))
+                      }
+                      if (qTimeRemaining !== null) {
+                        const targetQ = questions[idx]
+                        setQTimeRemaining(targetQ?.time_limit || 30)
+                      }
+                      setCurrentQIndex(idx)
+                      setSelectedOption(answers[q.id] || null)
+                      setIsNavigating(false)
+                      setAnimationClass(incoming)
+                    }}
+                    className={`min-w-[32px] h-8 rounded-lg text-xs font-bold border transition-all duration-200 ${
+                      isCurrent
+                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg ring-2 ring-indigo-400 ring-offset-2 ring-offset-slate-950 scale-105 shadow-indigo-600/20'
+                        : isAnswered
+                        ? 'bg-slate-800 border-indigo-500/30 text-indigo-400 hover:border-slate-700'
+                        : 'bg-slate-950 border-slate-800 text-slate-600 hover:border-slate-700'
+                    } ${canJump ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed opacity-55'}`}
                   >
-                    <span className={`h-6 w-6 rounded-full flex items-center justify-center font-bold text-xs ${
-                      isSelected 
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-900 border border-slate-800 text-slate-500'
-                    }`}>
-                      {key}
-                    </span>
-                    <span>{optText}</span>
+                    {idx + 1}
                   </button>
                 )
               })}
-            </CardContent>
-            
-            <CardFooter className="p-0 pt-6 mt-6 border-t border-slate-800 flex justify-between gap-3">
-              {exam.allow_backtracking ? (
-                <Button 
-                  onClick={handlePrevQuestion} 
-                  disabled={currentQIndex === 0} 
-                  variant="outline" 
-                  className="border-slate-800 text-slate-400 hover:text-white"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Previous
-                </Button>
-              ) : (
-                <div /> // empty flex spacer
-              )}
+            </div>
+          </div>
 
-              {currentQIndex < questions.length - 1 ? (
-                <Button onClick={() => handleNextQuestion(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 px-5">
-                  Save & Next
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button onClick={handleManualSubmit} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-6 shadow-lg shadow-emerald-600/10" disabled={submitting}>
-                  {submitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Submit Exam'
-                  )}
-                </Button>
+          {/* Question progress indicator */}
+          <Progress value={((currentQIndex + 1) / questions.length) * 100} className="h-1.5 bg-slate-900 transition-all duration-300" />
+          
+          {/* Animated Card Container */}
+          <div className={`${animationClass} transition-all duration-200 relative`}>
+            <Card className="relative border-slate-800 bg-slate-900/60 backdrop-blur-md p-5 md:p-6 shadow-xl overflow-hidden">
+              {isNavigating && (
+                <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center animate-fade-in">
+                  <Loader2 className="h-7 w-7 animate-spin text-indigo-400 mb-2" />
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider animate-pulse">Saving Progress...</span>
+                </div>
               )}
-            </CardFooter>
-          </Card>
+              <CardHeader className="p-0 pb-4 border-b border-slate-800">
+                <div className="flex justify-between items-start gap-4">
+                  <CardTitle className="text-white text-sm md:text-base leading-relaxed font-semibold">
+                    {currentQuestion.question_title}
+                  </CardTitle>
+                  <div className="flex flex-col items-end shrink-0 gap-1.5">
+                    <Badge variant="outline" className="border-slate-800 text-slate-400 font-mono text-[9px] md:text-[10px]">
+                      {currentQuestion.marks} pt(s)
+                    </Badge>
+                    
+                    {/* Per question timer indicator */}
+                    {qTimeRemaining !== null && (
+                      <Badge variant="outline" className="border-cyan-500/20 bg-cyan-500/5 text-cyan-400 font-mono text-[10px] md:text-xs px-2 py-0.5">
+                        {qTimeRemaining}s left
+                      </Badge>
+                    )}
+
+                    {/* Overall timer indicator */}
+                    {timeRemaining !== null && (
+                      <Badge variant="outline" className="border-indigo-500/20 bg-indigo-500/5 text-indigo-400 font-mono text-[10px] md:text-xs px-2 py-0.5">
+                        {formatTimer()} left
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0 pt-6 space-y-3">
+                {/* Options list with visual & tactile feedback */}
+                {resolvedOptionsOrder.map((key: 'A' | 'B' | 'C' | 'D') => {
+                  const optText = 
+                    key === 'A' ? currentQuestion.option_a :
+                    key === 'B' ? currentQuestion.option_b :
+                    key === 'C' ? currentQuestion.option_c :
+                    currentQuestion.option_d
+
+                  const isSelected = selectedOption === key
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => handleSelectOption(key)}
+                      className={`w-full p-4 text-left rounded-xl border transition-all duration-200 text-xs md:text-sm font-medium flex items-center gap-3 active:scale-[0.985] hover:scale-[1.005] cursor-pointer ${
+                        isSelected 
+                          ? 'bg-gradient-to-r from-indigo-600/20 to-violet-600/20 border-indigo-500 text-white shadow-lg shadow-indigo-500/10 scale-[1.01] animate-pop-in'
+                          : 'border-slate-800 bg-slate-950/40 hover:bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className={`h-5 w-5 md:h-6 md:w-6 rounded-full flex items-center justify-center font-bold text-[10px] md:text-xs transition-colors duration-200 shrink-0 ${
+                        isSelected 
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : 'bg-slate-900 border border-slate-800 text-slate-400'
+                      }`}>
+                        {key}
+                      </span>
+                      <span className="leading-relaxed">{optText}</span>
+                    </button>
+                  )
+                })}
+              </CardContent>
+              
+              <CardFooter className="p-0 pt-6 mt-6 border-t border-slate-800 flex justify-between gap-3">
+                {exam.allow_backtracking ? (
+                  <Button 
+                    onClick={handlePrevQuestion} 
+                    disabled={currentQIndex === 0} 
+                    variant="outline" 
+                    className="border-slate-800 text-slate-400 hover:text-white active:scale-95 transition-all text-xs h-9 md:h-10 cursor-pointer"
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-1.5" />
+                    Previous
+                  </Button>
+                ) : (
+                  <div /> // empty flex spacer
+                )}
+
+                {currentQIndex < questions.length - 1 ? (
+                  <Button onClick={() => handleNextQuestion(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 px-4 md:px-5 active:scale-95 transition-all text-xs h-9 md:h-10 cursor-pointer">
+                    Save & Next
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button onClick={handleManualSubmit} className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white gap-1.5 px-5 md:px-6 shadow-lg shadow-emerald-600/10 active:scale-95 transition-all text-xs h-9 md:h-10 cursor-pointer" disabled={submitting}>
+                    {submitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Submit Exam'
+                    )}
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+          </div>
         </div>
       </main>
 
       {/* Mandatory Fullscreen Overlay guard if exited */}
-      {!isFullscreen && (
+      {!isFullscreen && !isSubmittingRef.current && !submitting && (
         <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur flex items-center justify-center p-4">
           <Card className="max-w-md border-red-500 bg-slate-900 text-center p-4 shadow-2xl">
             <CardHeader className="pb-2">
@@ -643,6 +857,101 @@ export default function StudentExamTakingPage() {
                 className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold"
               >
                 Re-enter Fullscreen Mode
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
+
+      {/* Custom Glassmorphic Submission Confirmation Modal */}
+      {showSubmitConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in-up">
+          <Card className="w-full max-w-md border-slate-800 bg-slate-900/95 backdrop-blur-md p-6 shadow-2xl">
+            <CardHeader className="text-center p-0 pb-4 border-b border-slate-800">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-3">
+                <FileSpreadsheet className="h-6 w-6 text-emerald-500 animate-pulse" />
+              </div>
+              <CardTitle className="text-lg md:text-xl font-bold text-white">Submit Examination</CardTitle>
+              <CardDescription className="text-slate-400 text-xs md:text-sm mt-1">Please confirm if you are ready to finalize your exam.</CardDescription>
+            </CardHeader>
+            
+            <CardContent className="py-6 space-y-4">
+              <div className="p-4 bg-slate-950/50 rounded-xl border border-slate-800 space-y-3">
+                <div className="flex justify-between items-center text-xs md:text-sm">
+                  <span className="text-slate-400">Total Questions:</span>
+                  <span className="font-bold text-white">{questions.length}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs md:text-sm">
+                  <span className="text-slate-400">Answered Questions:</span>
+                  <span className="font-bold text-emerald-400">
+                    {Object.keys(answers).length}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs md:text-sm">
+                  <span className="text-slate-400">Unanswered Questions:</span>
+                  <span className={`font-bold ${
+                    (questions.length - Object.keys(answers).length) > 0 ? 'text-amber-500' : 'text-slate-500'
+                  }`}>
+                    {questions.length - Object.keys(answers).length}
+                  </span>
+                </div>
+              </div>
+              
+              <p className="text-[10px] md:text-xs text-slate-500 text-center leading-relaxed">
+                Once submitted, you will not be able to modify your answers or re-enter the exam attempt.
+              </p>
+            </CardContent>
+            
+            <CardFooter className="p-0 pt-4 border-t border-slate-800 flex justify-end gap-3 items-center">
+              {(questions.length - Object.keys(answers).length) > 0 && (
+                <Button
+                  onClick={() => {
+                    const unansweredIndex = questions.findIndex(q => !answers[q.id])
+                    if (unansweredIndex !== -1) {
+                      isSubmittingRef.current = false
+                      setShowSubmitConfirm(false)
+                      
+                      const direction = unansweredIndex > currentQIndex ? 'animate-slide-out-left' : 'animate-slide-out-right'
+                      const incoming = unansweredIndex > currentQIndex ? 'animate-slide-in-right' : 'animate-slide-in-left'
+                      
+                      setAnimationClass(direction)
+                      setTimeout(() => {
+                        setCurrentQIndex(unansweredIndex)
+                        setSelectedOption(answers[questions[unansweredIndex].id] || null)
+                        setAnimationClass(incoming)
+                      }, 200)
+                    }
+                  }}
+                  className="bg-amber-600/10 border border-amber-500/20 text-amber-400 hover:bg-amber-600/20 active:scale-95 transition-all text-xs h-9 md:h-10 cursor-pointer mr-auto"
+                  disabled={submitting}
+                >
+                  Review Skipped
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  isSubmittingRef.current = false
+                  setShowSubmitConfirm(false)
+                }}
+                className="border-slate-800 text-slate-400 hover:text-white active:scale-95 transition-all text-xs h-9 md:h-10 cursor-pointer"
+                disabled={submitting}
+              >
+                Go Back
+              </Button>
+              <Button
+                onClick={executeSubmit}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 active:scale-95 transition-all text-xs h-9 md:h-10 cursor-pointer"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Confirm Submission'
+                )}
               </Button>
             </CardFooter>
           </Card>

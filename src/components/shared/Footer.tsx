@@ -25,7 +25,7 @@ export function Footer({ className }: FooterProps) {
     <footer className={cn("w-full py-6 mt-auto border-t border-slate-900/60 bg-slate-950/20 text-center space-y-4 px-4 z-10", className)}>
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
         <p className="text-[11px] text-slate-600 order-last md:order-first">
-          © {new Date().getFullYear()} Luminous Skill Development Training Centre - SH TECH ZONE. All rights reserved.
+          © {new Date().getFullYear()} Luminous Skill Development Training Centre - Luminous Tech. All rights reserved.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-6">

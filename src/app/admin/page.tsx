@@ -68,7 +68,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-white">Admin Dashboard</h1>
-        <p className="text-sm text-slate-400">Welcome to SH TECH ZONE system administrator control center.</p>
+        <p className="text-sm text-slate-400">Welcome to Luminous Tech system administrator control center.</p>
       </div>
 
       {/* Stats Cards Grid */}

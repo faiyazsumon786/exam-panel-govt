@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Luminous Skill Development Training Centre - SH TECH ZONE | Online Examination",
+  title: "Luminous Skill Development Training Centre - Luminous Tech | Online Examination",
   description: "Enterprise-level Online Examination system with Pro Anti-Cheat, Question Bank, and Live Monitoring.",
 };
 

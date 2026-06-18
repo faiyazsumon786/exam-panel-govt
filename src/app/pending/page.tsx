@@ -62,7 +62,7 @@ export default function PendingPage() {
             </div>
             <CardTitle className="text-xl font-extrabold text-white tracking-tight leading-snug">Approval Pending</CardTitle>
             <CardDescription className="text-slate-400 text-xs tracking-wider uppercase font-semibold">
-              Thank you for registering at SH TECH ZONE
+              Thank you for registering at Luminous Tech
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

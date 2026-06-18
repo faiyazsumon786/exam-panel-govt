@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Loader2, Upload, User, Phone, Mail, Award, CheckCircle } from 'lucide-react'
+import { Loader2, Upload, User, Phone, Mail, Award, CheckCircle, Lock } from 'lucide-react'
 
 const profileSchema = zod.object({
   fullName: zod.string().min(2, 'Name must be at least 2 characters'),
@@ -29,8 +29,46 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [uploadingPic, setUploadingPic] = useState(false)
   const [profilePicUrl, setProfilePicUrl] = useState<string>('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
   const router = useRouter()
   const supabase = createClient()
+
+  const onPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!password) {
+      toast.error('Please enter a new password.')
+      return
+    }
+    if (password.length < 6) {
+      toast.error('Password must be at least 6 characters.')
+      return
+    }
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match.')
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password
+      })
+
+      if (error) {
+        throw error
+      }
+
+      toast.success('Password updated successfully!')
+      setPassword('')
+      setConfirmPassword('')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update password')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
 
   const {
     register,
@@ -188,90 +226,153 @@ export default function ProfilePage() {
             </div>
           </Card>
 
-          {/* Right Panel: Account Details */}
-          <Card className="border-slate-800 bg-slate-900/60 backdrop-blur-md md:col-span-2">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg text-white">Personal Information</CardTitle>
-              <CardDescription className="text-slate-400">Update your details to finalize your profile setup.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                {/* Email (Read Only) */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-slate-400">Email Address</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-600" />
-                    <Input
-                      id="email"
-                      type="email"
-                      value={profile.email}
-                      disabled
-                      className="pl-10 border-slate-800 bg-slate-950/40 text-slate-500 border-dashed"
-                    />
+          {/* Right Panel: Account Details & Security Settings */}
+          <div className="md:col-span-2 space-y-6">
+            {/* Card 1: Personal Information */}
+            <Card className="border-slate-800 bg-slate-900/60 backdrop-blur-md">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg text-white">Personal Information</CardTitle>
+                <CardDescription className="text-slate-400">Update your details to finalize your profile setup.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                  {/* Email (Read Only) */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email" className="text-slate-400">Email Address</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-600" />
+                      <Input
+                        id="email"
+                        type="email"
+                        value={profile.email}
+                        disabled
+                        className="pl-10 border-slate-800 bg-slate-950/40 text-slate-500 border-dashed"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                {/* Full Name */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="fullName" className="text-slate-300">Full Name</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-                    <Input
-                      id="fullName"
-                      type="text"
-                      className="pl-10 border-slate-800 bg-slate-950 text-white focus-visible:ring-indigo-500"
-                      {...register('fullName')}
-                    />
-                  </div>
-                  {errors.fullName && (
-                    <p className="text-xs text-red-500 mt-1">{errors.fullName.message}</p>
-                  )}
-                </div>
-
-                {/* Phone */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="phone" className="text-slate-300">Phone Number</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-                    <Input
-                      id="phone"
-                      type="tel"
-                      className="pl-10 border-slate-800 bg-slate-950 text-white focus-visible:ring-indigo-500"
-                      {...register('phone')}
-                    />
-                  </div>
-                  {errors.phone && (
-                    <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>
-                  )}
-                </div>
-
-                <div className="pt-4 flex justify-end gap-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => router.push(`/${profile.role}`)}
-                    className="text-slate-400 hover:text-white"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 shadow-md"
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving Changes...
-                      </>
-                    ) : (
-                      'Save Profile'
+                  {/* Full Name */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="fullName" className="text-slate-300">Full Name</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                      <Input
+                        id="fullName"
+                        type="text"
+                        className="pl-10 border-slate-800 bg-slate-950 text-white focus-visible:ring-indigo-500"
+                        {...register('fullName')}
+                      />
+                    </div>
+                    {errors.fullName && (
+                      <p className="text-xs text-red-500 mt-1">{errors.fullName.message}</p>
                     )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+                  </div>
+
+                  {/* Phone */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="phone" className="text-slate-300">Phone Number</Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                      <Input
+                        id="phone"
+                        type="tel"
+                        className="pl-10 border-slate-800 bg-slate-950 text-white focus-visible:ring-indigo-500"
+                        {...register('phone')}
+                      />
+                    </div>
+                    {errors.phone && (
+                      <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>
+                    )}
+                  </div>
+
+                  <div className="pt-4 flex justify-end gap-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => router.push(`/${profile.role}`)}
+                      className="text-slate-400 hover:text-white"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 shadow-md"
+                      disabled={saving}
+                    >
+                      {saving ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving Changes...
+                        </>
+                      ) : (
+                        'Save Profile'
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+
+            {/* Card 2: Security & Password Settings */}
+            <Card className="border-slate-800 bg-slate-900/60 backdrop-blur-md">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg text-white">Security & Password</CardTitle>
+                <CardDescription className="text-slate-400">Change your login password securely below.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={onPasswordSubmit} className="space-y-4">
+                  {/* New Password */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="newPassword" className="text-slate-300">New Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                      <Input
+                        id="newPassword"
+                        type="password"
+                        placeholder="Enter at least 6 characters"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pl-10 border-slate-800 bg-slate-950 text-white focus-visible:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Confirm New Password */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirmPassword" className="text-slate-300">Confirm New Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        placeholder="Re-type your new password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="pl-10 border-slate-800 bg-slate-950 text-white focus-visible:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex justify-end">
+                    <Button
+                      type="submit"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 shadow-md"
+                      disabled={changingPassword}
+                    >
+                      {changingPassword ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Updating Password...
+                        </>
+                      ) : (
+                        'Update Password'
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </PortalLayout>

@@ -53,7 +53,7 @@ export default function StudentResultPage() {
       const imgHeight = (canvas.height * imgWidth) / canvas.width
       
       pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
-      pdf.save(`SH_TECH_ZONE_Certificate_${result?.users?.full_name?.replace(' ', '_')}.pdf`)
+      pdf.save(`Luminous_Skill_Development_Training_Centre_Certificate_${result?.users?.full_name?.replace(/\s+/g, '_')}.pdf`)
     } catch (err) {
       console.error('Certificate generation failed')
     } finally {
@@ -77,7 +77,7 @@ export default function StudentResultPage() {
       const imgHeight = (canvas.height * imgWidth) / canvas.width
       
       pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
-      pdf.save(`SH_TECH_ZONE_Marksheet_${result?.exams?.title?.replace(' ', '_')}.pdf`)
+      pdf.save(`Luminous_Skill_Development_Training_Centre_Marksheet_${result?.exams?.title?.replace(/\s+/g, '_')}.pdf`)
     } catch (err) {
       console.error('Marksheet generation failed')
     } finally {
@@ -149,7 +149,7 @@ export default function StudentResultPage() {
       <div ref={marksheetRef} className="bg-slate-950 p-6 rounded-xl border border-slate-800/80 space-y-6">
         <div className="flex justify-between items-start gap-4">
           <div>
-            <h2 className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-indigo-500 bg-clip-text text-transparent">Luminous-SH TECH ZONE</h2>
+            <h2 className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-indigo-500 bg-clip-text text-transparent">Luminous Tech</h2>
             <p className="text-xs text-slate-500 mt-0.5">Online Examination</p>
           </div>
           <Badge className={result.is_passed 
@@ -328,47 +328,52 @@ export default function StudentResultPage() {
       <div className="absolute left-[-9999px] top-[-9999px]">
         <div 
           ref={certificateRef}
-          className="w-[1000px] h-[700px] bg-slate-950 text-white p-12 border-[16px] border-indigo-900 flex flex-col justify-between relative"
+          className="w-[1000px] h-[700px] bg-gradient-to-br from-[#fffdf9] via-[#fdfaf2] to-[#faf4e5] text-[#2d3748] p-12 border-[16px] border-[#0f2a4a] flex flex-col justify-between relative"
           style={{ fontFamily: 'Georgia, serif' }}
         >
           {/* Background design elements */}
-          <div className="absolute inset-0 border-4 border-indigo-500/20 m-2 pointer-events-none" />
-          <div className="absolute top-0 right-0 h-40 w-40 border-t border-r border-indigo-500/40 m-6" />
-          <div className="absolute bottom-0 left-0 h-40 w-40 border-b border-l border-indigo-500/40 m-6" />
+          <div className="absolute inset-0 border-4 border-[#c5a059]/30 m-2 pointer-events-none" />
+          <div className="absolute top-0 right-0 h-40 w-40 border-t border-r border-[#c5a059]/50 m-6" />
+          <div className="absolute bottom-0 left-0 h-40 w-40 border-b border-l border-[#c5a059]/50 m-6" />
+
+          {/* Watermark Logo / Background Pattern */}
+          <div className="absolute inset-0 flex items-center justify-center opacity-[0.035] pointer-events-none">
+            <img src="/logo.jpg" alt="Watermark Logo" className="w-[300px] h-[300px] rounded-full object-cover grayscale" />
+          </div>
 
           {/* Logo and Institution Header */}
           <div className="text-center space-y-2 pt-6">
-            <img src="/logo.jpg" alt="Logo" className="mx-auto h-24 w-24 rounded-full border-2 border-indigo-500/40 object-cover shadow-lg shadow-indigo-500/10 mb-2" />
-            <h1 className="text-2xl font-black tracking-widest text-indigo-400 uppercase font-sans">
+            <img src="/logo.jpg" alt="Logo" className="mx-auto h-24 w-24 rounded-full border-2 border-[#c5a059]/40 object-cover shadow-lg shadow-[#c5a059]/10 mb-2" />
+            <h1 className="text-2xl font-black tracking-widest text-[#0f2a4a] uppercase font-sans">
               Luminous Skill Development Training Centre
             </h1>
-            <p className="text-[10px] tracking-[0.25em] text-slate-500 font-sans uppercase font-bold">
+            <p className="text-[11px] tracking-[0.25em] text-[#c5a059] font-sans uppercase font-extrabold">
               {result.is_passed ? 'Certificate of Achievement' : 'Official Examination Report'}
             </p>
           </div>
 
           {/* Recipient and Main Text */}
           <div className="text-center space-y-4">
-            <p className="text-slate-400 italic text-sm font-sans">This document is proudly presented to</p>
-            <h2 className="text-4xl font-bold text-white tracking-wide underline decoration-indigo-500 underline-offset-8">
+            <p className="text-slate-500 italic text-sm font-sans">This document is proudly presented to</p>
+            <h2 className="text-4xl font-bold text-[#0f2a4a] tracking-wide underline decoration-[#c5a059] decoration-2 underline-offset-8">
               {result.users?.full_name}
             </h2>
-            <p className="text-slate-400 max-w-2xl mx-auto leading-relaxed text-sm font-sans px-8">
-              for participating in and completing the online examination of <strong className="text-white">{result.exams?.title}</strong> in the subject course <strong className="text-white">{result.exams?.subjects?.name}</strong>.
+            <p className="text-slate-600 max-w-2xl mx-auto leading-relaxed text-sm font-sans px-8">
+              for participating in and completing the online examination of <strong className="text-slate-900 font-semibold">{result.exams?.title}</strong> in the subject course <strong className="text-slate-900 font-semibold">{result.exams?.subjects?.name}</strong>.
             </p>
           </div>
 
           {/* Marks and Percentage Details Grid */}
-          <div className="max-w-md mx-auto w-full bg-slate-900/60 border border-slate-800 rounded-xl p-4 grid grid-cols-3 gap-4 text-center font-sans">
+          <div className="max-w-md mx-auto w-full bg-[#f4f1ea] border border-[#e2dcd0] rounded-xl p-4 grid grid-cols-3 gap-4 text-center font-sans">
             <div>
               <span className="text-[9px] text-slate-500 uppercase font-bold block">Marks Obtained</span>
-              <span className="text-sm font-bold text-white font-mono mt-1 block">
+              <span className="text-sm font-bold text-[#0f2a4a] font-mono mt-1 block">
                 {result.obtained_marks} / {result.total_marks}
               </span>
             </div>
             <div>
               <span className="text-[9px] text-slate-500 uppercase font-bold block">Percentage</span>
-              <span className="text-sm font-bold text-indigo-400 font-mono mt-1 block">
+              <span className="text-sm font-bold text-[#0f2a4a] font-mono mt-1 block">
                 {result.percentage}%
               </span>
             </div>
@@ -376,8 +381,8 @@ export default function StudentResultPage() {
               <span className="text-[9px] text-slate-500 uppercase font-bold block">Exam Status</span>
               <span className={`text-xs font-bold uppercase mt-1.5 inline-block px-2.5 py-0.5 rounded-full border ${
                 result.is_passed 
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                  : 'bg-red-500/10 text-red-400 border-red-500/20'
+                  ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
+                  : 'bg-red-500/10 text-red-700 border-red-500/20'
               }`}>
                 {result.is_passed ? 'PASSED' : 'FAILED'}
               </span>
@@ -385,19 +390,19 @@ export default function StudentResultPage() {
           </div>
 
           {/* Footer Signatures */}
-          <div className="flex justify-between items-end border-t border-slate-800/80 pt-6 font-sans">
+          <div className="flex justify-between items-end border-t border-[#e2dcd0] pt-6 font-sans">
             <div className="text-left space-y-1">
               <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Date Issued</span>
-              <span className="text-xs font-semibold text-white">{new Date(result.created_at).toLocaleDateString()}</span>
+              <span className="text-xs font-semibold text-slate-800">{new Date(result.created_at).toLocaleDateString()}</span>
             </div>
             <div className="text-center space-y-1">
-              <Badge className="bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 text-xs uppercase font-bold tracking-wider">
+              <Badge className="bg-[#c5a059]/10 text-[#a37f3d] border border-[#c5a059]/20 text-xs uppercase font-bold tracking-wider rounded-md">
                 VERIFIED RECORD
               </Badge>
             </div>
             <div className="text-right space-y-1">
               <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Authority Signature</span>
-              <span className="text-xs font-semibold text-indigo-400 italic">SH Tech Admin</span>
+              <span className="text-xs font-semibold text-[#0f2a4a] italic">Luminous Tech Admin</span>
             </div>
           </div>
         </div>
