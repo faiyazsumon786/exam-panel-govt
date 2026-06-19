@@ -205,17 +205,25 @@ export default function AdminExamsPage() {
     const questionsList: any[] = []
     let currentQuestion: any = null
 
+    const mapOptionLetter = (char: string): string => {
+      const mapping: { [key: string]: string } = {
+        'ক': 'A', 'খ': 'B', 'গ': 'C', 'ঘ': 'D',
+        'A': 'A', 'B': 'B', 'C': 'C', 'D': 'D'
+      }
+      return mapping[char.toUpperCase()] || char.toUpperCase()
+    }
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
 
-      // Match question line: starts with number followed by dot or parenthesis (e.g. "1.", "1)")
-      const questionMatch = line.match(/^\d+[\.\)]\s*(.+)$/i)
+      // Match question line: starts with number (English or Bengali) followed by dot or parenthesis (e.g. "1.", "৫৯)")
+      const questionMatch = line.match(/^([0-9০-৯]+)[\.\)]\s*(.+)$/i)
       if (questionMatch) {
         if (currentQuestion) {
           questionsList.push(currentQuestion)
         }
         currentQuestion = {
-          question: questionMatch[1].trim(),
+          question: questionMatch[2].trim(),
           option_a: '',
           option_b: '',
           option_c: '',
@@ -229,32 +237,54 @@ export default function AdminExamsPage() {
 
       if (!currentQuestion) continue
 
-      // Match options: A., B., C., D. or A), B), C), D)
-      const optAMatch = line.match(/^A[\.\)]\s*(.+)$/i)
+      // Check for inline Bengali options on the same line, e.g.:
+      // ক. কর্মীর     খ. মালিকের       গ. সুপারভাইজারের      ঘ. গ্রাহকের।
+      const inlineBengaliMatch = line.match(/^\s*ক[\.\)]\s*(.+?)\s+খ[\.\)]\s*(.+?)\s+গ[\.\)]\s*(.+?)\s+ঘ[\.\)]\s*(.+)$/i)
+      if (inlineBengaliMatch) {
+        currentQuestion.option_a = inlineBengaliMatch[1].trim()
+        currentQuestion.option_b = inlineBengaliMatch[2].trim()
+        currentQuestion.option_c = inlineBengaliMatch[3].trim()
+        currentQuestion.option_d = inlineBengaliMatch[4].trim()
+        continue
+      }
+
+      // Check for inline English options on the same line, e.g.:
+      // A. Option A  B. Option B  C. Option C  D. Option D
+      const inlineEnglishMatch = line.match(/^\s*A[\.\)]\s*(.+?)\s+B[\.\)]\s*(.+?)\s+C[\.\)]\s*(.+?)\s+D[\.\)]\s*(.+)$/i)
+      if (inlineEnglishMatch) {
+        currentQuestion.option_a = inlineEnglishMatch[1].trim()
+        currentQuestion.option_b = inlineEnglishMatch[2].trim()
+        currentQuestion.option_c = inlineEnglishMatch[3].trim()
+        currentQuestion.option_d = inlineEnglishMatch[4].trim()
+        continue
+      }
+
+      // Match options on separate lines (either English A-D or Bengali ক-ঘ)
+      const optAMatch = line.match(/^(?:A|ক)[\.\)]\s*(.+)$/i)
       if (optAMatch) {
         currentQuestion.option_a = optAMatch[1].trim()
         continue
       }
-      const optBMatch = line.match(/^B[\.\)]\s*(.+)$/i)
+      const optBMatch = line.match(/^(?:B|খ)[\.\)]\s*(.+)$/i)
       if (optBMatch) {
         currentQuestion.option_b = optBMatch[1].trim()
         continue
       }
-      const optCMatch = line.match(/^C[\.\)]\s*(.+)$/i)
+      const optCMatch = line.match(/^(?:C|গ)[\.\)]\s*(.+)$/i)
       if (optCMatch) {
         currentQuestion.option_c = optCMatch[1].trim()
         continue
       }
-      const optDMatch = line.match(/^D[\.\)]\s*(.+)$/i)
+      const optDMatch = line.match(/^(?:D|ঘ)[\.\)]\s*(.+)$/i)
       if (optDMatch) {
         currentQuestion.option_d = optDMatch[1].trim()
         continue
       }
 
-      // Match Answer: A, Answer: A, Correct Answer: A, Ans: A
-      const ansMatch = line.match(/^(?:Answer|Correct Answer|Ans|Correct):\s*([A-D])/i)
+      // Match Answer line: Answer: A / উত্তরঃ গ / Ans: খ etc.
+      const ansMatch = line.match(/^(?:Answer|Correct Answer|Ans|Correct|উত্তরঃ|উত্তর|উঃ)[:：]?\s*([A-Dক-ঘ])/i)
       if (ansMatch) {
-        currentQuestion.correct_answer = ansMatch[1].trim().toUpperCase()
+        currentQuestion.correct_answer = mapOptionLetter(ansMatch[1].trim())
         continue
       }
 
