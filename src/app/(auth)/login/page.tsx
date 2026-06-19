@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as zod from 'zod'
 import { createClient } from '@/lib/supabase/client'
+import { resolveEmailByPhoneAction } from '@/app/actions/login'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,7 +45,12 @@ export default function LoginPage() {
     try {
       let loginEmail = values.email.trim()
       if (!loginEmail.includes('@')) {
-        loginEmail = `${loginEmail}@luminous.com`
+        const resolvedEmail = await resolveEmailByPhoneAction(loginEmail)
+        if (resolvedEmail) {
+          loginEmail = resolvedEmail
+        } else {
+          loginEmail = `${loginEmail}@luminous.com`
+        }
       }
 
       const { data: { session }, error } = await supabase.auth.signInWithPassword({
