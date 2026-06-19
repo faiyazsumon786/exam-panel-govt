@@ -9,7 +9,8 @@ import {
   publishExam, 
   addExamQuestionDirectly, 
   linkQuestionFromBank, 
-  autoGenerateExamQuestions 
+  autoGenerateExamQuestions,
+  reopenExam
 } from '@/app/actions/exams-mentor'
 import Papa from 'papaparse'
 import { toast } from 'sonner'
@@ -41,8 +42,11 @@ import {
   CheckCircle,
   HelpCircle,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  AlertTriangle,
+  Calendar
 } from 'lucide-react'
+
 
 export default function ExamDetailBuilderPage() {
   const params = useParams()
@@ -55,6 +59,10 @@ export default function ExamDetailBuilderPage() {
   const [publishing, setPublishing] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
   const [isDirectOpen, setIsDirectOpen] = useState(false)
+  const [isReopenOpen, setIsReopenOpen] = useState(false)
+  const [reopenStartDate, setReopenStartDate] = useState('')
+  const [reopenEndDate, setReopenEndDate] = useState('')
+  const [reopening, setReopening] = useState(false)
   const [isLinkOpen, setIsLinkOpen] = useState(false)
   const [isAutoOpen, setIsAutoOpen] = useState(false)
 
@@ -295,6 +303,70 @@ export default function ExamDetailBuilderPage() {
     }
   }
 
+  // Open Re-open/Extend modal with formatted defaults
+  const handleOpenReopen = () => {
+    if (!exam) return
+    const now = new Date()
+    const currentStart = new Date(exam.start_date)
+    
+    // Format helper to YYYY-MM-DDTHH:MM local time
+    const formatToLocalISO = (date: Date) => {
+      const offset = date.getTimezoneOffset()
+      const localDate = new Date(date.getTime() - offset * 60 * 1000)
+      return localDate.toISOString().substring(0, 16)
+    }
+
+    if (currentStart < now) {
+      setReopenStartDate(formatToLocalISO(now))
+    } else {
+      setReopenStartDate(exam.start_date.substring(0, 16))
+    }
+
+    const currentEnd = new Date(exam.end_date)
+    if (currentEnd < now) {
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      setReopenEndDate(formatToLocalISO(tomorrow))
+    } else {
+      setReopenEndDate(exam.end_date.substring(0, 16))
+    }
+
+    setIsReopenOpen(true)
+  }
+
+  // Submit Re-open/Extend updates
+  const handleReopenSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!reopenStartDate || !reopenEndDate) {
+      toast.error('Both start date and end date are required.')
+      return
+    }
+
+    const start = new Date(reopenStartDate)
+    const end = new Date(reopenEndDate)
+
+    if (end <= start) {
+      toast.error('End date must be after the start date.')
+      return
+    }
+
+    setReopening(true)
+    try {
+      const res = await reopenExam(examId, start.toISOString(), end.toISOString())
+      if (res.success) {
+        toast.success('Exam re-opened & extended successfully!')
+        setIsReopenOpen(false)
+        queryClient.invalidateQueries({ queryKey: ['exam-builder-details', examId] })
+      } else {
+        toast.error(res.error || 'Failed to re-open exam.')
+      }
+    } catch (err) {
+      toast.error('Connection error.')
+    } finally {
+      setReopening(false)
+    }
+  }
+
+
   if (loadingExam) {
     return (
       <div className="flex h-full w-full items-center justify-center p-24">
@@ -307,6 +379,8 @@ export default function ExamDetailBuilderPage() {
 
   const isPublished = exam.status !== 'draft'
   const isCompleted = exam.status === 'completed'
+  const isExpired = exam.status === 'published' && new Date(exam.end_date) < new Date()
+  const isExpiredOrCompleted = isExpired || exam.status === 'completed'
 
   return (
     <div className="space-y-6">
@@ -343,6 +417,31 @@ export default function ExamDetailBuilderPage() {
           )}
         </div>
       </div>
+
+      {isExpiredOrCompleted && (
+        <Card className="border-amber-500/20 bg-amber-500/5 text-amber-200 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-xl">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white">
+                {exam.status === 'completed' ? 'This exam is completed' : 'This exam has expired / closed'}
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {exam.status === 'completed' 
+                  ? 'This exam has been marked as completed.' 
+                  : `The closing date (${new Date(exam.end_date).toLocaleString()}) has passed.`} Students can no longer access or start this exam.
+              </p>
+            </div>
+          </div>
+          <Button onClick={handleOpenReopen} className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs py-1.5 px-4 h-9 gap-1.5 shadow-md self-start sm:self-auto shrink-0">
+            <Calendar className="h-4 w-4" />
+            Re-open / Extend Exam
+          </Button>
+        </Card>
+      )}
+
 
       <Tabs defaultValue="questions" className="w-full">
         <TabsList className="bg-slate-950 border border-slate-800 p-1 mb-6">
@@ -878,6 +977,62 @@ export default function ExamDetailBuilderPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 4: Re-open / Extend Exam Dialog */}
+      <Dialog open={isReopenOpen} onOpenChange={setIsReopenOpen}>
+        <DialogContent className="max-w-md border-slate-800 bg-slate-900 text-white">
+          <form onSubmit={handleReopenSubmit} className="flex flex-col space-y-4">
+            <div className="space-y-1">
+              <h3 className="font-bold text-lg text-white">Re-open / Extend Exam</h3>
+              <p className="text-xs text-slate-400">
+                Update the examination dates to make it visible and available to students again.
+              </p>
+            </div>
+
+            <div className="space-y-4 pt-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="reopen-start-date">New Start Time</Label>
+                <Input
+                  id="reopen-start-date"
+                  type="datetime-local"
+                  value={reopenStartDate}
+                  onChange={(e) => setReopenStartDate(e.target.value)}
+                  className="bg-slate-950 border-slate-800 text-white text-xs"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="reopen-end-date">New End Time</Label>
+                <Input
+                  id="reopen-end-date"
+                  type="datetime-local"
+                  value={reopenEndDate}
+                  onChange={(e) => setReopenEndDate(e.target.value)}
+                  className="bg-slate-950 border-slate-800 text-white text-xs"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-800/80">
+              <Button type="button" variant="outline" onClick={() => setIsReopenOpen(false)} className="border-slate-800 text-slate-300">
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5" disabled={reopening}>
+                {reopening ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save & Re-open'
+                )}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

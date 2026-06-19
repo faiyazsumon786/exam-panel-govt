@@ -156,6 +156,30 @@ export async function deleteExam(examId: string) {
   return { success: true }
 }
 
+// Re-open / Extend Exam
+export async function reopenExam(examId: string, startDate: string, endDate: string) {
+  const supabase = await createClient()
+
+  // Get current user (mentor)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Not authenticated' }
+
+  // Update status to 'published' and set new dates
+  const { error } = await (supabase
+    .from('exams') as any)
+    .update({
+      status: 'published',
+      start_date: startDate,
+      end_date: endDate,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', examId)
+
+  if (error) return { success: false, error: error.message }
+  return { success: true }
+}
+
+
 // 3. QUESTION BANK CRUD
 interface QuestionBankInput {
   subjectId: string
