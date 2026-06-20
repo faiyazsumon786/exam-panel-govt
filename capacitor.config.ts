@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: 'Luminous Exam',
   webDir: 'out',
   server: {
-    url: 'http://10.0.2.2:3001',
+    url: 'https://exam.luminouscentree.com',
+    allowNavigation: ['exam.luminouscentree.com', '*.luminouscentree.com'],
     cleartext: true
   }
 };
