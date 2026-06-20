@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Luminous Exam</string>
+    <string name="title_activity_main">Luminous Exam</string>
+    <string name="package_name">com.luminous.exam</string>
+    <string name="custom_url_scheme">com.luminous.exam</string>
+</resources>
