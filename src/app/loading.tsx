@@ -1,5 +1,4 @@
 // src/app/loading.tsx
-import { FaSpinner } from "react-icons/fa";
 
 export default function GlobalLoading() {
   return (
